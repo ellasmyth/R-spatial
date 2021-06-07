@@ -1,0 +1,215 @@
+---
+title: "R-spatial.rmd"
+author: "Ella Smyth"
+date: "06/06/2021"
+output: html_document
+---
+
+##install required packages
+```{r}
+install.packages('sf')
+install.packages('sp')
+install.packages('rgdal')
+install.packages('raster')
+install.packages('rgeos')
+install.packages('dplyr')
+install.packages('classInt')
+install.packages('RColorBrewer')
+install.packages('ggplot2')
+install.packages('ggmap')
+install.packages('ggmap')
+install.packages('tmap')
+install.packages('leaflet')
+```
+
+##load required packages
+```{r}
+library('sf')
+library('sp')
+library('rgdal')
+library('raster')
+library('rgeos')
+library('dplyr')
+library('classInt')
+library('RColorBrewer')
+library('ggplot2')
+library('ggmap')
+library('ggmap')
+library('tmap')
+library('leaflet')
+```
+
+#Chapter 1: Introduction to spatial data in R
+
+##1.1   Conceptualizing spatial vector objects in R
+
+###1.1.1    The sp package
+
+####general process - 1. create geometric objects, 2. create spatial objects, 3. add attributes
+
+#### Build up an sp Object containing highways
+```{r}
+ln1 = Line(matrix(runif(6), ncol=2))
+str(ln1) #create a matrix of arbitary numbers for x and y coordinates, i.e. one 'highway'
+ln2 <- Line(matrix(runif(6), ncol=2)) #second highway
+
+lns1 <- Lines(list(ln1), ID = c("hwy1")) #add a unique ID for each lines object
+lns2 <- Lines(list(ln2), ID = c("hwy2")) 
+str(lns1)
+
+sp_lns = SpatialLines(list(lns1, lns2)) #create a geospatial object, using SpatialLines
+str(sp_lns)
+
+dfr = data.frame(id = c("hwy1", "hwy2"), #create a dataframe with information attributed to each highway (i.e. no. cars/hour)
+                  cars_per_hour = c(78, 22)) 
+sp_lns_dfr = SpatialLinesDataFrame(sp_lns, dfr, match.ID = "id") #join it to the spatial object
+str(sp_lns_dfr)
+```
+
+###1.1.2 The sf package
+
+####data is structured and conceptualised differently in this package. (1. create geometric objects, 2. combine single features into a collection, 3. add attributes)
+
+####Create the same highway object as above:
+```{r}
+lnstr_sfg1 <- st_linestring(matrix(runif(6), ncol=2)) #create lines using linestrings, out of a matrix of coordinates
+lnstr_sfg2 <- st_linestring(matrix(runif(6), ncol=2)) 
+class(lnstr_sfg1)
+
+(lnstr_sfc <- st_sfc(lnstr_sfg1, lnstr_sfg2)) #combine into a simple feature collection
+
+(lnstr_sf <- st_sf(dfr , lnstr_sfc)) #add attributes from above datafram (cars/hour)
+```
+
+####sf better than sp - more options, fast processing, can plot with ggplot, etc. Other packages to conceptualise spatial data in R, able to convert between formats usually.
+
+
+##1.2 Create a spatial object from a lat/long object
+
+###1.2.1 With sf
+
+```{r}
+#my_sf_object <- st_as_sf(myDataframe, coords)    use st_as_sf to convert any object into a new sf object. have the specify to dataframe's coordiante columns
+
+philly_homicides_df <- read.csv("data/philly_homicides.csv") #load data into a dataframe
+str(philly_homicides_df )
+
+philly_homicides_sf <- st_as_sf(philly_homicides_df, coords = c("POINT_X", "POINT_Y")) #convert from a dataframe to an sf object
+str(philly_homicides_sf) #addition of a geometry column with all the points in a simple feature collection
+
+st_crs(philly_homicides_sf) #check the coordinate reference system (NA because have not set it yet)
+st_crs(philly_homicides_sf) <- 4326 #set the crs to the WGS84 projection, using the code 4326
+st_crs(philly_homicides_sf) #now a complete geographical object!
+
+st_write(philly_homicides_sf, "data/PhillyHomicides", driver = "ESRI Shapefile") #save this object as a shapefile
+st_write(philly_homicides_sf, "data/PhillyHomicides", driver = "ESRI Shapefile", delete_layer = TRUE) #force it to save using the overwrite option (won't save if the file already exists)
+```
+
+###1.2.2 With sp
+
+```{r}
+#coordinates(myDataframe) <- value    create a SpatialPointsDataFrame directly from the dataframe by specifying which columns contain the coordinates. coordinates() replaces the oringal dataframe 
+
+coordinates(philly_homicides_df) <- c("POINT_X", "POINT_Y")
+class(philly_homicides_df)
+
+is.projected(philly_homicides_df) #check if a crs is set
+proj4string(philly_homicides_df) <- CRS("+init=epsg:4326") # set the project to WGS84
+is.projected(philly_homicides_df) #need another package, rgdal, to save as a shapefile
+
+writeOGR(philly_homicides_df, "data/PhillyHomicides", "PhillyHomcides", driver = "ESRI Shapefile") #use the writeOGR function to save
+writeOGR(philly_homicides_df, "data/PhillyHomicides", "PhillyHomcides", driver = "ESRI Shapefile", overwrite_layer = TRUE) #overwrite layer
+```
+
+##1.3 Load shapefiles into R
+
+###1.3.1 Working with sf
+
+```{r}
+philly_sf <- st_read("data/Philly/") #use st_read with the shapefile as an argument
+str(philly_sf) #notice the geometry column - 'multipolygon'. Change the dimension of the object with st_drop_geometry(), to a non spatial object is desired
+
+plot(philly_sf) #default plot of an sf object is a multiplot of the first 9 attributes
+
+plot(st_geometry(philly_sf)) #plot only polygon boundaries have to specify the geometry column with st_geometry
+
+#now add a particular attribute to the plot:
+philly_sf_rich <- philly_sf[philly_sf$medHHinc > 60000, ] #subset data, of households with median income of >$60000
+plot(st_geometry(philly_sf_rich), add=T, col="red")
+
+
+```
+
+###1.3.2 Working with sp and rgdal
+
+```{r}
+#use...
+  #readOGR() and writeOGR() - for vector
+  #readGDAL() and writeGDAL() - for raster/grids
+#parameters for each function depend on the exact spatial file type
+  #ESRI shapefile for readOGR has the folllowing functions:
+    #datasource name (dsn) - the path to the folder that contains the files (not the filename)
+    #layer name (layer) - the name of the file
+
+philly_sp <- readOGR("data/Philly/", "PhillyTotalPopHHinc") 
+class(philly_sp)
+
+
+plot(philly_sp)
+philly_sp_rich <- subset(philly_sp, medHHinc > 60000) #another method to subset
+plot(philly_sp_rich, add=T, col="red")
+```
+
+##1.4 Raster data
+
+###Raster files are much more compact than vector files - have regular structure (pixels) and so don't need to record coordinates for every cell. Raster data is defined by:
+  ####    a CRS
+  ####    coordinates of its origin
+  ####    a distance or cell size in each direction
+  ####    a dimension or numbers of cells in each direction
+  ####    an array of cell values
+  
+```{r}
+#create a raster layer from scratch:
+
+r <- raster(xmn=-0.5, ymn=-0.5, xmx=4.5, ymx=4.5, resolution=c(1,1)) #specify min and max values for x and y and the cell size in each dimension
+r #note how WGS84 projection is used by default when... x coordinates are within -360 and 360 and the y coordinates are within -90 and 90
+
+r <- setValues(r, runif(25)) #add some values to the raster
+class(r)
+
+plot(r); points(coordinates(r), pch=1) #plot and add coordinates as points to map. Use rasterVis package for more advanced plotting of raster objects
+
+#can also create a raster layer from a matrix:
+class(volcano)
+volcano.r <- raster(volcano)
+class(volcano.r) #voila!
+
+#load a raster file with raster():
+HARV <- raster("data/HARV_RGB_Ortho.tif")
+HARV
+plot(HARV)
+hist(HARV) #note hist() has a default max data values of 100000
+hist(HARV, maxpixels = ncell(HARV))
+nlayers(HARV) #find out how many bands the raster file contains. Note, raster() only loads a single layer, the first band (?)
+HARV_Band2 <- raster("data/HARV_RGB_Ortho.tif", band = 2) #specify which layer to load
+plot(HARV_Band2)
+
+#to load multiple layers, use stack()
+HARV_stack <- stack("data/HARV_RGB_Ortho.tif")
+nlayers(HARV_stack) #3 bands
+HARV_stack
+plot(HARV_stack)
+
+#given it is a RGB composite multiband raster, we can plot with:
+plotRGB(HARV_stack) #cool!
+```
+
+#### 1.4.1 RasterStack vs RasterBrick
+
+##### RasterStack and RasterBrick object types can both store multiple bands of raster files, however the rasterbrick() is usually more efficient
+
+```{r}
+
+
+```

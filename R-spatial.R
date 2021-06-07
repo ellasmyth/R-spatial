@@ -1,0 +1,16 @@
+install.packages('sf')
+install.packages('sp')
+install.packages('rgdal')
+install.packages('raster')
+install.packages('rgeos')
+install.packages('dplyr')
+install.packages('classInt')
+install.packages('RColorBrewer')
+install.packages('ggplot2')
+install.packages('ggmap')
+install.packages('ggmap')
+install.packages('tmap')
+install.packages('leaflet')
+
+
+ln1 = Line(matrix(runif(6), ncol=2))
